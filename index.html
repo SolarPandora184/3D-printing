@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>G-code Filament Analyzer</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+      background: #121212;
+      color: white;
+    }
+    h1 {
+      text-align: center;
+    }
+    input[type="file"] {
+      margin-top: 10px;
+    }
+    .upload-section {
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    .print-list {
+      margin-top: 30px;
+    }
+    .print-entry {
+      border: 1px solid #444;
+      padding: 10px;
+      margin-bottom: 10px;
+      border-radius: 8px;
+      background: #1e1e1e;
+    }
+    button {
+      background: #333;
+      color: white;
+      border: none;
+      padding: 6px 10px;
+      cursor: pointer;
+      margin-top: 5px;
+      border-radius: 5px;
+    }
+    button:hover {
+      background: #555;
+    }
+  </style>
+</head>
+<body>
+  <h1>G-code Filament Analyzer</h1>
+  <div class="upload-section">
+    <input type="file" id="gcodeInput" accept=".gcode" />
+  </div>
+  <div id="printCatalog" class="print-list"></div>
+
+  <script>
+    const input = document.getElementById("gcodeInput");
+    const catalog = document.getElementById("printCatalog");
+
+    function parseGCode(content) {
+      const lines = content.split("\n");
+      let meters = null, grams = null, time = null;
+      for (const line of lines) {
+        if (line.includes("Filament used")) {
+          const mMatch = line.match(/([\d.]+)m/);
+          const gMatch = line.match(/([\d.]+)g/);
+          if (mMatch) meters = parseFloat(mMatch[1]);
+          if (gMatch) grams = parseFloat(gMatch[1]);
+        }
+        if (line.includes("Estimated time") || line.includes("Time:")) {
+          time = line.replace(/^[^:]+:/, "").trim();
+        }
+      }
+      return { meters, grams, time };
+    }
+
+    function saveToCatalog(name, stats) {
+      const existing = JSON.parse(localStorage.getItem("gcodeCatalog") || "[]");
+      existing.push({ name, ...stats, date: new Date().toISOString() });
+      localStorage.setItem("gcodeCatalog", JSON.stringify(existing));
+      loadCatalog();
+    }
+
+    function loadCatalog() {
+      catalog.innerHTML = "<h2>Your Print Catalog</h2>";
+      const entries = JSON.parse(localStorage.getItem("gcodeCatalog") || "[]");
+      if (!entries.length) {
+        catalog.innerHTML += "<p>No G-code files uploaded yet.</p>";
+        return;
+      }
+      entries.reverse().forEach((entry, i) => {
+        const div = document.createElement("div");
+        div.className = "print-entry";
+        div.innerHTML = `
+          <strong>Name:</strong> ${entry.name}<br/>
+          <strong>Filament:</strong> ${entry.meters ?? "?"} m, ${entry.grams ?? "?"} g<br/>
+          <strong>Time:</strong> ${entry.time ?? "Unknown"}<br/>
+          <strong>Uploaded:</strong> ${new Date(entry.date).toLocaleString()}<br/>
+          <button onclick="deleteEntry(${entries.length - 1 - i})">Delete</button>
+        `;
+        catalog.appendChild(div);
+      });
+    }
+
+    function deleteEntry(index) {
+      const entries = JSON.parse(localStorage.getItem("gcodeCatalog") || "[]");
+      entries.splice(index, 1);
+      localStorage.setItem("gcodeCatalog", JSON.stringify(entries));
+      loadCatalog();
+    }
+
+    input.addEventListener("change", () => {
+      const file = input.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const content = reader.result;
+        const stats = parseGCode(content);
+        saveToCatalog(file.name, stats);
+      };
+      reader.readAsText(file);
+    });
+
+    loadCatalog();
+  </script>
+</body>
+</html>
