@@ -1,136 +1,144 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>G-code Visualizer & Catalog</title>
+  <meta charset="UTF-8">
+  <title>Print Catalog</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     body {
       font-family: sans-serif;
-      padding: 20px;
       background: #121212;
-      color: white;
+      color: #fff;
+      padding: 20px;
     }
-    h1, h2 {
+    h1 {
       text-align: center;
     }
-    .upload-section {
-      text-align: center;
-      margin-bottom: 20px;
-    }
-    canvas {
-      border: 1px solid #444;
-      background: #000;
-      display: block;
-      margin: 10px auto;
-    }
-    .print-entry {
+    form {
       background: #1e1e1e;
-      padding: 10px;
-      border: 1px solid #444;
-      border-radius: 8px;
-      margin: 10px 0;
+      padding: 15px;
+      border-radius: 10px;
+      margin-bottom: 30px;
+    }
+    input, textarea, button {
+      width: 100%;
+      margin-top: 10px;
+      padding: 8px;
+      border-radius: 5px;
+      border: none;
+    }
+    input[type="file"] {
+      padding: 3px;
     }
     button {
       background: #333;
       color: white;
-      border: none;
-      padding: 6px 10px;
-      margin-top: 5px;
-      border-radius: 5px;
       cursor: pointer;
     }
     button:hover {
       background: #555;
     }
+    .entry {
+      background: #1e1e1e;
+      border: 1px solid #444;
+      padding: 10px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+    }
+    .entry img {
+      max-width: 100%;
+      margin-top: 10px;
+      border-radius: 6px;
+    }
+    .file-name {
+      color: #ccc;
+      font-style: italic;
+      font-size: 0.9em;
+    }
   </style>
 </head>
 <body>
-  <h1>G-code Visualizer</h1>
-  <div class="upload-section">
-    <input type="file" id="gcodeInput" accept=".gcode" />
-  </div>
-  <canvas id="gcodeCanvas" width="400" height="400"></canvas>
-  <div id="printCatalog"></div>
+  <h1>My 3D Print Catalog</h1>
+  
+  <form id="uploadForm">
+    <label>Title:</label>
+    <input type="text" id="title" required>
+
+    <label>Description:</label>
+    <textarea id="description" rows="3" required></textarea>
+
+    <label>Print File (.gcode or .stl):</label>
+    <input type="file" id="file" accept=".gcode,.stl" required>
+
+    <label>Photo of the Print:</label>
+    <input type="file" id="image" accept="image/*" required>
+
+    <button type="submit">Add to Catalog</button>
+  </form>
+
+  <div id="catalog"></div>
 
   <script>
-    const input = document.getElementById("gcodeInput");
-    const canvas = document.getElementById("gcodeCanvas");
-    const ctx = canvas.getContext("2d");
-    const catalog = document.getElementById("printCatalog");
-
-    function drawGCode(content) {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.strokeStyle = "#00ff00";
-      ctx.lineWidth = 0.5;
-
-      const lines = content.split("\\n");
-      let x = 0, y = 0;
-      const scale = 2; // Adjust scale as needed
-
-      ctx.beginPath();
-      for (const line of lines) {
-        if (line.startsWith(";") || line.length < 2) continue;
-
-        const xMatch = line.match(/X([-\\d\\.]+)/);
-        const yMatch = line.match(/Y([-\\d\\.]+)/);
-
-        const newX = xMatch ? parseFloat(xMatch[1]) * scale : x;
-        const newY = yMatch ? parseFloat(yMatch[1]) * scale : y;
-
-        ctx.moveTo(x, canvas.height - y);
-        ctx.lineTo(newX, canvas.height - newY);
-
-        x = newX;
-        y = newY;
-      }
-      ctx.stroke();
-    }
-
-    function saveToCatalog(name) {
-      const existing = JSON.parse(localStorage.getItem("gcodeCatalog") || "[]");
-      existing.push({ name, date: new Date().toISOString() });
-      localStorage.setItem("gcodeCatalog", JSON.stringify(existing));
-      loadCatalog();
-    }
+    const form = document.getElementById("uploadForm");
+    const catalogDiv = document.getElementById("catalog");
 
     function loadCatalog() {
-      catalog.innerHTML = "<h2>Your Print Catalog</h2>";
-      const entries = JSON.parse(localStorage.getItem("gcodeCatalog") || "[]");
-      if (!entries.length) {
-        catalog.innerHTML += "<p>No G-code files uploaded yet.</p>";
+      catalogDiv.innerHTML = "<h2>Catalog</h2>";
+      const items = JSON.parse(localStorage.getItem("printCatalog") || "[]");
+      if (items.length === 0) {
+        catalogDiv.innerHTML += "<p>No entries yet.</p>";
         return;
       }
-      entries.reverse().forEach((entry, i) => {
+
+      items.reverse().forEach(entry => {
         const div = document.createElement("div");
-        div.className = "print-entry";
+        div.className = "entry";
         div.innerHTML = `
-          <strong>Name:</strong> ${entry.name}<br/>
-          <strong>Uploaded:</strong> ${new Date(entry.date).toLocaleString()}<br/>
-          <button onclick="deleteEntry(${entries.length - 1 - i})">Delete</button>
+          <h3>${entry.title}</h3>
+          <p>${entry.description}</p>
+          <p class="file-name">${entry.filename}</p>
+          ${entry.image ? `<img src="${entry.image}" alt="Print image">` : ""}
         `;
-        catalog.appendChild(div);
+        catalogDiv.appendChild(div);
       });
     }
 
-    function deleteEntry(index) {
-      const entries = JSON.parse(localStorage.getItem("gcodeCatalog") || "[]");
-      entries.splice(index, 1);
-      localStorage.setItem("gcodeCatalog", JSON.stringify(entries));
-      loadCatalog();
-    }
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      
+      const title = document.getElementById("title").value;
+      const description = document.getElementById("description").value;
+      const file = document.getElementById("file").files[0];
+      const imageFile = document.getElementById("image").files[0];
 
-    input.addEventListener("change", () => {
-      const file = input.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        const content = reader.result;
-        drawGCode(content);
-        saveToCatalog(file.name);
+      if (!file || !imageFile) return alert("Please upload both a file and an image.");
+
+      const imageURL = await toBase64(imageFile);
+      
+      const entry = {
+        title,
+        description,
+        filename: file.name,
+        image: imageURL,
+        timestamp: new Date().toISOString()
       };
-      reader.readAsText(file);
+
+      const existing = JSON.parse(localStorage.getItem("printCatalog") || "[]");
+      existing.push(entry);
+      localStorage.setItem("printCatalog", JSON.stringify(existing));
+
+      form.reset();
+      loadCatalog();
     });
+
+    function toBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
 
     loadCatalog();
   </script>
