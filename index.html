@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>G-code Filament Analyzer</title>
+  <title>G-code Visualizer & Catalog</title>
   <style>
     body {
       font-family: sans-serif;
@@ -11,34 +11,34 @@
       background: #121212;
       color: white;
     }
-    h1 {
+    h1, h2 {
       text-align: center;
-    }
-    input[type="file"] {
-      margin-top: 10px;
     }
     .upload-section {
-      margin-bottom: 20px;
       text-align: center;
+      margin-bottom: 20px;
     }
-    .print-list {
-      margin-top: 30px;
+    canvas {
+      border: 1px solid #444;
+      background: #000;
+      display: block;
+      margin: 10px auto;
     }
     .print-entry {
-      border: 1px solid #444;
-      padding: 10px;
-      margin-bottom: 10px;
-      border-radius: 8px;
       background: #1e1e1e;
+      padding: 10px;
+      border: 1px solid #444;
+      border-radius: 8px;
+      margin: 10px 0;
     }
     button {
       background: #333;
       color: white;
       border: none;
       padding: 6px 10px;
-      cursor: pointer;
       margin-top: 5px;
       border-radius: 5px;
+      cursor: pointer;
     }
     button:hover {
       background: #555;
@@ -46,36 +46,50 @@
   </style>
 </head>
 <body>
-  <h1>G-code Filament Analyzer</h1>
+  <h1>G-code Visualizer</h1>
   <div class="upload-section">
     <input type="file" id="gcodeInput" accept=".gcode" />
   </div>
-  <div id="printCatalog" class="print-list"></div>
+  <canvas id="gcodeCanvas" width="400" height="400"></canvas>
+  <div id="printCatalog"></div>
 
   <script>
     const input = document.getElementById("gcodeInput");
+    const canvas = document.getElementById("gcodeCanvas");
+    const ctx = canvas.getContext("2d");
     const catalog = document.getElementById("printCatalog");
 
-    function parseGCode(content) {
-      const lines = content.split("\n");
-      let meters = null, grams = null, time = null;
+    function drawGCode(content) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = "#00ff00";
+      ctx.lineWidth = 0.5;
+
+      const lines = content.split("\\n");
+      let x = 0, y = 0;
+      const scale = 2; // Adjust scale as needed
+
+      ctx.beginPath();
       for (const line of lines) {
-        if (line.includes("Filament used")) {
-          const mMatch = line.match(/([\d.]+)m/);
-          const gMatch = line.match(/([\d.]+)g/);
-          if (mMatch) meters = parseFloat(mMatch[1]);
-          if (gMatch) grams = parseFloat(gMatch[1]);
-        }
-        if (line.includes("Estimated time") || line.includes("Time:")) {
-          time = line.replace(/^[^:]+:/, "").trim();
-        }
+        if (line.startsWith(";") || line.length < 2) continue;
+
+        const xMatch = line.match(/X([-\\d\\.]+)/);
+        const yMatch = line.match(/Y([-\\d\\.]+)/);
+
+        const newX = xMatch ? parseFloat(xMatch[1]) * scale : x;
+        const newY = yMatch ? parseFloat(yMatch[1]) * scale : y;
+
+        ctx.moveTo(x, canvas.height - y);
+        ctx.lineTo(newX, canvas.height - newY);
+
+        x = newX;
+        y = newY;
       }
-      return { meters, grams, time };
+      ctx.stroke();
     }
 
-    function saveToCatalog(name, stats) {
+    function saveToCatalog(name) {
       const existing = JSON.parse(localStorage.getItem("gcodeCatalog") || "[]");
-      existing.push({ name, ...stats, date: new Date().toISOString() });
+      existing.push({ name, date: new Date().toISOString() });
       localStorage.setItem("gcodeCatalog", JSON.stringify(existing));
       loadCatalog();
     }
@@ -92,8 +106,6 @@
         div.className = "print-entry";
         div.innerHTML = `
           <strong>Name:</strong> ${entry.name}<br/>
-          <strong>Filament:</strong> ${entry.meters ?? "?"} m, ${entry.grams ?? "?"} g<br/>
-          <strong>Time:</strong> ${entry.time ?? "Unknown"}<br/>
           <strong>Uploaded:</strong> ${new Date(entry.date).toLocaleString()}<br/>
           <button onclick="deleteEntry(${entries.length - 1 - i})">Delete</button>
         `;
@@ -114,8 +126,8 @@
       const reader = new FileReader();
       reader.onload = () => {
         const content = reader.result;
-        const stats = parseGCode(content);
-        saveToCatalog(file.name, stats);
+        drawGCode(content);
+        saveToCatalog(file.name);
       };
       reader.readAsText(file);
     });
